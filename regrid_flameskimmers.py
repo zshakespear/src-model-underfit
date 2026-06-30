@@ -26,6 +26,9 @@ import numpy as np
 import xarray as xr
 from scipy.interpolate import CubicSpline
 from tqdm import tqdm
+from datetime import datetime, timezone
+import getpass
+
 
 
 DEFAULT_WAVELENGTH_CANDIDATES = ("wavelength", "wavel", "lambda", "lam")
@@ -524,6 +527,27 @@ def output_path_for_source(source_path: Path, root: Path, output_dir: Path) -> P
     output_path.parent.mkdir(parents=True, exist_ok=True)
     return output_path
 
+def get_current_author() -> str:
+    """Return the username of the current user running the script.
+
+    Returns
+    -------
+    str
+        Current username.
+    """
+    return getpass.getuser()
+
+
+def get_run_timestamp_iso() -> str:
+    """Return the current UTC timestamp in ISO 8601 format.
+
+    Returns
+    -------
+    str
+        Current timestamp as an ISO 8601 string.
+    """
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
 
 def write_regridded_output(
     output_path: Path,
@@ -556,6 +580,9 @@ def write_regridded_output(
     source_flux_attrs : dict
         Attributes copied from the source flux variable.
     """
+    author = get_current_author()
+    run_timestamp = get_run_timestamp_iso()
+
     dataset = xr.Dataset(
         data_vars={
             flux_variable: (
@@ -573,9 +600,12 @@ def write_regridded_output(
         },
         attrs={
             "source_file": str(source_path),
+            "script_name": Path(__file__).name,
+            "author": author,
+            "date_created": run_timestamp,
             "processing_history": (
-                "Regridded with scipy.interpolate.CubicSpline in "
-                "process_preliminary_flameskimmers_regridded.py"
+                f"Regridded with scipy.interpolate.CubicSpline in "
+                f"{Path(__file__).name} by {author} on {run_timestamp}"
             ),
         },
     )
