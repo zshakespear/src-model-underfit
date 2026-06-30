@@ -17,99 +17,17 @@ python regrid_preliminary_flameskimmers_regridded.py \
 from __future__ import annotations
 
 import argparse
-import subprocess
-import time
+
 from pathlib import Path
-from typing import Iterable
 
 import numpy as np
 import xarray as xr
 from scipy.interpolate import CubicSpline
 from tqdm import tqdm
-from datetime import datetime, timezone
-import getpass
 
+from flameskimmer_tools import existing_dir, existing_file, existing_or_new_dir, get_current_author, get_run_timestamp_iso, find_wavelength_variable, get_wavelength_unit, dehydrate_file, hydrate_file, iter_files, extract_1d_spectrum, validate_wavelength_array, WavelengthUnitError
 
-
-DEFAULT_WAVELENGTH_CANDIDATES = ("wavelength", "wavel", "lambda", "lam")
 DEFAULT_FLUX_VARIABLE = "flux_emission"
-
-
-class WavelengthUnitError(ValueError):
-    """Raised when wavelength units are missing or inconsistent."""
-
-
-def existing_dir(value: str) -> Path:
-    """Validate and return an existing directory path.
-
-    Parameters
-    ----------
-    value : str
-        Directory path from the command line.
-
-    Returns
-    -------
-    Path
-        Resolved directory path.
-
-    Raises
-    ------
-    argparse.ArgumentTypeError
-        If the path does not exist or is not a directory.
-    """
-    path = Path(value).expanduser().resolve()
-    if not path.exists():
-        raise argparse.ArgumentTypeError(f"Path does not exist: {value}")
-    if not path.is_dir():
-        raise argparse.ArgumentTypeError(f"Path is not a directory: {value}")
-    return path
-
-
-def existing_file(value: str) -> Path:
-    """Validate and return an existing file path.
-
-    Parameters
-    ----------
-    value : str
-        File path from the command line.
-
-    Returns
-    -------
-    Path
-        Resolved file path.
-
-    Raises
-    ------
-    argparse.ArgumentTypeError
-        If the path does not exist or is not a file.
-    """
-    path = Path(value).expanduser().resolve()
-    if not path.exists():
-        raise argparse.ArgumentTypeError(f"File does not exist: {value}")
-    if not path.is_file():
-        raise argparse.ArgumentTypeError(f"Path is not a file: {value}")
-    return path
-
-
-def existing_or_new_dir(value: str) -> Path:
-    """Create a directory if needed and return its resolved path.
-
-    Parameters
-    ----------
-    value : str
-        Directory path from the command line.
-
-    Returns
-    -------
-    Path
-        Resolved directory path.
-    """
-    path = Path(value).expanduser().resolve()
-    path.mkdir(parents=True, exist_ok=True)
-    if not path.is_dir():
-        raise argparse.ArgumentTypeError(f"Not a directory: {value}")
-    return path
-
 
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments.
@@ -197,150 +115,6 @@ def parse_args() -> argparse.Namespace:
     )
     return parser.parse_args()
 
-
-def iter_files(root: Path, pattern: str) -> Iterable[Path]:
-    """Yield matching files under a root directory.
-
-    Parameters
-    ----------
-    root : Path
-        Root directory to scan.
-    pattern : str
-        Glob-style pattern.
-
-    Yields
-    ------
-    Path
-        Matching file path.
-    """
-    for path in root.rglob(pattern):
-        if path.is_file():
-            yield path
-
-
-def run_attrib(path: Path, *flags: str) -> None:
-    """Run Windows attrib on a path.
-
-    Parameters
-    ----------
-    path : Path
-        File path to modify.
-    *flags : str
-        attrib flags such as '+U', '-P', '-U', '+P'.
-    """
-    subprocess.run(["attrib", *flags, str(path)], check=False, shell=True)
-
-
-def hydrate_file(path: Path, wait_seconds: float = 2.0, retries: int = 30) -> None:
-    """Ensure a OneDrive file is available locally.
-
-    Parameters
-    ----------
-    path : Path
-        File to hydrate.
-    wait_seconds : float
-        Delay between retries.
-    retries : int
-        Number of hydration checks.
-
-    Raises
-    ------
-    RuntimeError
-        If hydration fails.
-    """
-    run_attrib(path, "-U", "+P")
-    for _ in range(retries):
-        try:
-            with path.open("rb") as handle:
-                handle.read(1)
-            return
-        except OSError:
-            time.sleep(wait_seconds)
-    raise RuntimeError(f"Could not hydrate file: {path}")
-
-
-def dehydrate_file(path: Path) -> None:
-    """Return a file to online-only state.
-
-    Parameters
-    ----------
-    path : Path
-        File to dehydrate.
-    """
-    run_attrib(path, "+U", "-P")
-
-
-def find_wavelength_variable(dataset: xr.Dataset, preferred_name: str | None) -> str:
-    """Find the wavelength variable name in a dataset.
-
-    Parameters
-    ----------
-    dataset : xr.Dataset
-        Dataset to inspect.
-    preferred_name : str or None
-        Explicit variable name supplied by the user.
-
-    Returns
-    -------
-    str
-        Name of the wavelength variable.
-
-    Raises
-    ------
-    KeyError
-        If no suitable wavelength variable can be found.
-    """
-    if preferred_name is not None:
-        if preferred_name not in dataset:
-            raise KeyError(f"Wavelength variable '{preferred_name}' not found.")
-        return preferred_name
-
-    for name in DEFAULT_WAVELENGTH_CANDIDATES:
-        if name in dataset:
-            return name
-        if name in dataset.coords:
-            return name
-
-    for name in dataset.variables:
-        lower = name.lower()
-        if "wave" in lower or lower in {"lambda", "lam"}:
-            return name
-
-    raise KeyError("Could not determine wavelength variable name.")
-
-
-def get_wavelength_unit(dataset: xr.Dataset, variable_name: str, dataset_label: str) -> str:
-    """Return the wavelength unit string for a dataset variable.
-
-    Parameters
-    ----------
-    dataset : xr.Dataset
-        Dataset containing the wavelength variable.
-    variable_name : str
-        Wavelength variable name.
-    dataset_label : str
-        Human-readable label for error messages.
-
-    Returns
-    -------
-    str
-        Unit string.
-
-    Raises
-    ------
-    WavelengthUnitError
-        If the wavelength unit attribute is missing or empty.
-    """
-    variable = dataset[variable_name]
-    for key in ("units", "unit"):
-        value = variable.attrs.get(key)
-        if value is not None and str(value).strip():
-            return str(value).strip()
-    raise WavelengthUnitError(
-        f"Wavelength units are missing for variable '{variable_name}' in {dataset_label}."
-    )
-
-
 def validate_matching_wavelength_units(
     source_dataset: xr.Dataset,
     source_wavelength_name: str,
@@ -388,84 +162,7 @@ def validate_matching_wavelength_units(
     return source_unit
 
 
-def validate_wavelength_array(wavelength: np.ndarray, label: str) -> np.ndarray:
-    """Validate and standardize a wavelength array for spline interpolation.
 
-    Parameters
-    ----------
-    wavelength : np.ndarray
-        Input wavelength array.
-    label : str
-        Human-readable label for error messages.
-
-    Returns
-    -------
-    np.ndarray
-        One-dimensional wavelength array.
-
-    Raises
-    ------
-    ValueError
-        If the array is not one-dimensional, finite, or strictly increasing.
-    """
-    wavelength = np.asarray(wavelength, dtype=float)
-    if wavelength.ndim != 1:
-        raise ValueError(f"{label} must be one-dimensional.")
-    if wavelength.size < 2:
-        raise ValueError(f"{label} must contain at least two points.")
-    if not np.all(np.isfinite(wavelength)):
-        raise ValueError(f"{label} contains non-finite values.")
-    if not np.all(np.diff(wavelength) > 0.0):
-        raise ValueError(f"{label} must be strictly increasing for spline interpolation.")
-    return wavelength
-
-
-def prepare_source_arrays(
-    dataset: xr.Dataset,
-    wavelength_name: str,
-    flux_variable: str,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Extract and validate source wavelength and flux arrays.
-
-    Parameters
-    ----------
-    dataset : xr.Dataset
-        Source dataset.
-    wavelength_name : str
-        Name of the wavelength variable.
-    flux_variable : str
-        Name of the flux variable.
-
-    Returns
-    -------
-    tuple[np.ndarray, np.ndarray]
-        Validated wavelength and flux arrays.
-
-    Raises
-    ------
-    KeyError
-        If the flux variable is not present.
-    ValueError
-        If dimensions or values are unsuitable for interpolation.
-    """
-    if flux_variable not in dataset:
-        raise KeyError(f"Flux variable '{flux_variable}' not found.")
-
-    wavelength = np.asarray(dataset[wavelength_name].to_numpy(), dtype=float)
-    flux = np.asarray(dataset[flux_variable].to_numpy(), dtype=float)
-
-    wavelength = validate_wavelength_array(wavelength, f"Source wavelength '{wavelength_name}'")
-
-    if flux.ndim != 1:
-        raise ValueError(f"Flux variable '{flux_variable}' must be one-dimensional.")
-    if flux.shape[0] != wavelength.shape[0]:
-        raise ValueError(
-            f"Flux variable '{flux_variable}' length does not match wavelength length."
-        )
-    if not np.all(np.isfinite(flux)):
-        raise ValueError(f"Flux variable '{flux_variable}' contains non-finite values.")
-
-    return wavelength, flux
 
 
 def regrid_flux(
@@ -526,27 +223,6 @@ def output_path_for_source(source_path: Path, root: Path, output_dir: Path) -> P
     output_path = (output_dir / relative_path).with_suffix(".nc")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     return output_path
-
-def get_current_author() -> str:
-    """Return the username of the current user running the script.
-
-    Returns
-    -------
-    str
-        Current username.
-    """
-    return getpass.getuser()
-
-
-def get_run_timestamp_iso() -> str:
-    """Return the current UTC timestamp in ISO 8601 format.
-
-    Returns
-    -------
-    str
-        Current timestamp as an ISO 8601 string.
-    """
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
 def write_regridded_output(
@@ -680,7 +356,7 @@ def process_file(
             str(path),
             "target wavelength grid",
         )
-        source_wavelength, source_flux = prepare_source_arrays(
+        source_wavelength, source_flux = extract_1d_spectrum(
             source_dataset,
             source_wavelength_name,
             flux_variable,
