@@ -27,6 +27,8 @@ from tqdm import tqdm
 
 from flameskimmer_tools import existing_dir, existing_file, existing_or_new_dir, get_current_author, get_run_timestamp_iso, find_wavelength_variable, get_wavelength_unit, dehydrate_file, hydrate_file, iter_files, extract_1d_spectrum, validate_wavelength_array, WavelengthUnitError
 
+from spectres import spectres
+
 DEFAULT_FLUX_VARIABLE = "flux_emission"
 
 def parse_args() -> argparse.Namespace:
@@ -160,10 +162,6 @@ def validate_matching_wavelength_units(
         )
 
     return source_unit
-
-
-
-
 
 def regrid_flux(
     source_wavelength: np.ndarray,
@@ -363,13 +361,7 @@ def process_file(
         )
         source_flux_attrs = dict(source_dataset[flux_variable].attrs)
 
-    rebinned_flux = regrid_flux(
-        source_wavelength,
-        source_flux,
-        target_wavelength,
-        bc_type=bc_type,
-        allow_extrapolation=allow_extrapolation,
-    )
+    rebinned_flux = spectres(target_wavelength, source_wavelength, source_flux)
 
     write_regridded_output(
         output_path=output_path,
