@@ -25,7 +25,7 @@ import xarray as xr
 from scipy.interpolate import CubicSpline
 from tqdm import tqdm
 
-from flameskimmer_tools import existing_dir, existing_file, existing_or_new_dir, get_current_author, get_run_timestamp_iso, find_wavelength_variable, get_wavelength_unit, dehydrate_file, hydrate_file, iter_files, extract_1d_spectrum, validate_wavelength_array, WavelengthUnitError
+from flameskimmer_tools import existing_dir, existing_file, existing_or_new_dir, get_current_author, get_run_timestamp_iso, find_wavelength_variable, get_wavelength_unit, dehydrate_file, hydrate_file, iter_files, extract_1d_spectrum, validate_wavelength_array, WavelengthUnitError, output_path_for_source, already_regridded
 
 from spectres import spectres
 
@@ -278,7 +278,7 @@ def write_regridded_output(
             "author": author,
             "date_created": run_timestamp,
             "processing_history": (
-                f"Regridded with scipy.interpolate.CubicSpline in "
+                f"Regridded with spectres.spectres in "
                 f"{Path(__file__).name} by {author} on {run_timestamp}"
             ),
         },
@@ -420,6 +420,9 @@ def main() -> None:
 
     processed = 0
     for path in tqdm(iter_files(args.root, args.pattern)):
+        if already_regridded(path, args.root, args.output_dir):
+            continue
+        
         if args.limit is not None and processed >= args.limit:
             break
 

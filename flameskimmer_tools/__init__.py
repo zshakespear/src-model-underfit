@@ -18,7 +18,7 @@ Or import submodules explicitly:
 from .cli import existing_dir, existing_file, existing_or_new_dir
 from .metadata import get_current_author, get_run_timestamp_iso
 from .netcdf_utils import WavelengthUnitError, find_wavelength_variable, get_wavelength_unit
-from .onedrive import dehydrate_file, hydrate_file, iter_files, run_attrib
+from .onedrive import dehydrate_file, hydrate_file, iter_files, run_attrib, output_path_for_source, already_regridded
 from .spectra import extract_1d_spectrum, validate_wavelength_array
 
 __all__ = [
@@ -35,5 +35,7 @@ __all__ = [
     "run_attrib",
     "extract_1d_spectrum",
     "validate_wavelength_array",
-    "WavelengthUnitError"
+    "WavelengthUnitError",
+    "output_path_for_source",
+    "already_regridded"
 ]

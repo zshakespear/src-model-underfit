@@ -73,3 +73,13 @@ def dehydrate_file(path: Path) -> None:
         File to dehydrate.
     """
     run_attrib(path, "+U", "-P")
+
+# FIXME: docstrings
+def output_path_for_source(source_path: Path, input_root: Path, output_root: Path) -> Path:
+    relative_path = source_path.relative_to(input_root)
+    return (output_root / relative_path).with_suffix(".nc")
+
+
+def already_regridded(source_path: Path, input_root: Path, output_root: Path) -> bool:
+    output_path = output_path_for_source(source_path, input_root, output_root)
+    return output_path.is_file()
