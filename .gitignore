@@ -1,5 +1,7 @@
 # Stuff specific to this project
 local_lib
+*.json
+configs
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
